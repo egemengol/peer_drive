@@ -3,31 +3,13 @@ from threading import Thread
 from typing import Optional, NamedTuple, Set
 import sys
 
-
-"""
-Received port is TCP port which is not the listen port. To test on one machine, either
-supply port in the header
-create docker compose 
-supplying port is easier.
-"""
+from filehandler import FileHandler
+from agent import Agent, AgentHandler
 
 
 class Address(NamedTuple):
     ip: str
     port: int
-
-
-class Agent(NamedTuple):
-    name: bytes
-    addr: Address
-
-    @property
-    def name_padded(self) -> bytes:
-        return self.name.ljust(10, b"\0")[:10]
-
-    def __str__(self) -> str:
-        return f"{self.name.decode('ascii', 'replace')} - {self.addr.ip}"
-
 
 
 class ListenerTCP(Thread):
@@ -56,56 +38,70 @@ class ListenerTCP(Thread):
                         break
                     parts.append(part)
                 data = b"".join(parts)
-                addr = Address(ip=addr[0], port=addr[1])
-                self.f_tcp_recv(data, addr)
+                self.f_tcp_recv(data, addr[0])
 
 
-class AgentHandler:
-    def __init__(self):
-        self._agents: Set[Agent] = set()
+class ListenerUDP(Thread):
+    def __init__(self, address: Address, f_udp_recv):
+        super(ListenerUDP, self).__init__()
+        self.daemon = True
+        try:
+            self.s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self.s.bind(address)
+            self.s.setblocking(0)
+        except socket.error as e:
+            print('Failed to create UDP socket', file=sys.stderr)
+            print(e, file=sys.stderr)
+            print(f"{address}", file=sys.stderr)
+            sys.exit(1)
+        self.f_udp_recv = f_udp_recv
 
-    def none_if_proper(self, agent: Agent) -> Optional[Agent]:
-        if agent in self._agents:
-            return None
-
-        for ag in self._agents:
-            if ag.name == agent.name:
-                # address has changed
-                return ag
-            elif ag.addr.ip == agent.addr.ip:
-                # different user from same ip
-                return ag
-        # User not found, add
-        self._agents.add(agent)
-        return None
-
-    def replace(self, old_agent: Agent, new_agent: Agent) -> None:
-        self._agents.discard(old_agent)
-        self._agents.add(new_agent)
+    def run(self):
+        while True:
+            conn, addr = self.s.accept()
+            with conn:
+                parts = list()
+                while True:
+                    part = conn.recv(11)
+                    if not part:
+                        break
+                    parts.append(part)
+                data = b"".join(parts)
+                self.f_udp_recv(data, addr[0])
 
 
 class Backend:
-    def __init__(self, listen_addr: Address, username: bytes):
-        self.listener = ListenerTCP(listen_addr, self._f_tcp_recv)
-        self.listener.start()
+    PORT_TCP = 8888
+    PORT_UDP = 9999
+
+    def __init__(self, username: bytes):
+        self.listener_tcp = ListenerTCP(Address(self.get_ip(), self.PORT_TCP), self._f_tcp_recv)
+        self.listener_tcp.start()
+        self.listener_udp = ListenerUDP(Address('', self.PORT_UDP), self._f_tcp_recv)
+
         self.user_db = AgentHandler()
         self.username = username
-        self.port_listen = listen_addr.port
+
+    @staticmethod
+    def get_ip() -> str:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            try:
+                # doesn't even have to be reachable
+                s.connect(('10.255.255.255', 1))
+                ip = s.getsockname()[0]
+            except:
+                ip = '127.0.0.1'
+        return ip
 
     @property
     def _padded_name(self) -> bytes:
         return self.username.ljust(10, b"\0")[:10]
 
-    @property
-    def packet_header(self) -> bytes:
-        return self._padded_name + self.port_listen.to_bytes(2, byteorder="big", signed=False)
-
-    def _f_tcp_recv(self, data: bytes, addr: Address):
+    def _f_tcp_recv(self, data: bytes, ip: str):
         """
         upload ex: bekir\0\0\0\0\0\x00\x00Ufilename.txt\0this is a file\n
 
         Bounded 10-byte \0 padded from right username at the beginning
-        and big endian two bytes recv port number
         Then one char command type
 
         [S] Status    -
@@ -122,8 +118,7 @@ class Backend:
             return
 
         user = data[:10].rstrip(b"\0")
-        recv_port = int.from_bytes(data[10:12], byteorder="big", signed=False)
-        agent = Agent(name=user, addr=Address(addr.ip, recv_port))
+        agent = Agent(name=user, ip=ip)
         agent_instead = self.user_db.none_if_proper(agent)
         if agent_instead is not None:
             # TODO handle error
@@ -131,8 +126,8 @@ class Backend:
             print(f"There is an agent like this: {agent_instead}", file=sys.stderr)
             return
 
-        command = data[12]
-        data = data[13:]
+        command = data[10]
+        data = data[11:]
         if command == b'S':
             self._inc_status(agent)
             return
@@ -149,36 +144,41 @@ class Backend:
         if js is None:
             return False
         data = b"O" + js
-        return self._send_tcp(data, agent.addr)
+        return self._send_tcp(data, agent.ip)
 
     def out_status(self, agent: Agent) -> bool:
         # Sends STATUS command to agent.
-        return self._send_tcp(b"S", agent.addr)
+        return self._send_tcp(b"S", agent.ip)
     
-    def out_status_broadcast(self) -> None:
-        # TODO DO BROADCAST OR MULTICAST
-        # WHAT TO DO ON THE SAME MACHINE? MULTICAST WOULD WORK
-        pass
-    
+    def out_status_broadcast(self) -> bool:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.bind(('', 0))
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+            try:
+                s.sendto(b"S", ("<broadcast>", self.PORT_UDP))
+                return True
+            except:
+                return False
+
     def _inc_upload(self, agent: Agent, filename: bytes, data: bytes) -> None:
         print(f"Incoming UPLOAD\nfilename: {filename.decode()}\ndata head: {data[:30].decode()}")
     
     def out_upload(self, agent: Agent, filename: bytes, data: bytes) -> bool:
         packet = self._padded_name + b"U" + filename + b"\0" + data
-        return self._send_tcp(packet, agent.addr)
+        return self._send_tcp(packet, agent.ip)
 
-    def _send_tcp(self, data: bytes, address: Address) -> bool:
+    def _send_tcp(self, data: bytes, ip: str) -> bool:
         socket_timeout = 2
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.settimeout(socket_timeout)  # seconds
             try:
-                s.connect(address)
+                s.connect((ip, self.PORT_TCP))
             except Exception as e:
                 print(e, file=sys.stderr)
                 return False
             else:
                 try:
-                    s.sendall(self.packet_header + data)
+                    s.sendall(self._padded_name + data)
                     return True
                 except Exception as e:
                     print(e, file=sys.stderr)
@@ -204,4 +204,3 @@ class Backend:
     def _inc_failure(self, addr: Address, fail_str: bytes, pickled: bytes):
         pass
 """
-

@@ -8,6 +8,7 @@ class FileHandler:
     # No "__init__"
     # class variables defined like:
     master_path = Path("~/.peerdrive")
+    pickle_path = master_path / ".storage" / "agents.pkl"
 
     # can use mypy backend.py for static type checking. These types are for this purpose.
 

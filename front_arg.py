@@ -2,7 +2,7 @@
 
 import click
 
-from backend import *
+from backend import Backend
 
 
 @click.group()
@@ -10,19 +10,10 @@ def main():
     pass
 
 
-@main.group()
-def loopback():
-    print("Inside loopback")
-
-
-@main.group()
-def network():
-    print("Inside network")
-
-
-@network.command()
+@main.command()
 @click.option("--from_who", type=str)
 def status(from_who: str):
+    b = Backend()
     if from_who is not None:
         print("Getting from:", from_who)
     else:
