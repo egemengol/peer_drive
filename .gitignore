@@ -1,2 +1,6 @@
 .vscode
 .mypy_cache
+.idea
+.dmypy.json
+/venv/
+__pycache__/
