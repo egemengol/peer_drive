@@ -1,6 +1,10 @@
 from pathlib import Path
-from typing import Optional, Any
-import json
+
+from containers import *
+
+path_storage: Path = Path("./.storage")
+if not path_storage.is_dir():
+    path_storage.mkdir()
 
 
 class FileHandler:
@@ -8,17 +12,19 @@ class FileHandler:
     # No "__init__"
     # class variables defined like:
     master_path = Path("~/.peerdrive")
-    pickle_path = master_path / ".storage" / "agents.pkl"
 
     # can use mypy backend.py for static type checking. These types are for this purpose.
 
     @staticmethod
-    def server_overview_of(user: bytes) -> Optional[bytes]:
+    def server_overview_of(user: bytes) -> Optional[Jsonable]:
         # JSON encoding, so every key must be a string
-        overview = {
-            "user": user,
-        }
-        return json.dumps(overview).encode("ascii", "replace")
+        # noinspection PyTypeChecker
+        overview = Jsonable({
+            "user": user.decode('ascii', 'replace'),
+            "total_space_KB": 200000,
+            "used_space_KB": 50000,
+        })
+        return overview
         # return None
 
     @staticmethod
@@ -28,6 +34,12 @@ class FileHandler:
 
     @staticmethod
     def server_file_put(user: bytes, filename: bytes, data: bytes) -> bool:
+        path: Path = path_storage / user.decode("ascii", "replace")
+        if not path.is_dir():
+            path.mkdir()
+        filepath: Path = path / filename.decode("ascii", "replace")
+        with open(filepath, "wb") as f:
+            f.write(data)
         print(f"PUT file {filename.decode()} for user {user.decode()}, contents: {data[:30].decode()}")
         return True
 
@@ -42,13 +54,21 @@ class FileHandler:
         return True
 
     @staticmethod
-    def server_storage_status() -> Any:
+    def server_storage_status() -> str:
         # TODO no idea about the output. Your choice.
-        pass
+        # JSON for now.
+        status = {
+            "total": "laksjd"
+        }
+        return json.dumps(status)
 
     @staticmethod
-    def client_file_read(path: Path) -> bytes:
-        return b"This is the insides of the file at " + bytes(path) + b"\n"
+    def client_file_read(path: Path) -> Optional[bytes]:
+        try:
+            with open(path, "rb") as f:
+                return f.read()
+        except:
+            return None
 
     @staticmethod
     def client_file_write(path: Path, data: bytes) -> bool:

@@ -1,15 +1,11 @@
 import socket
+from pathlib import Path
 from threading import Thread
-from typing import Optional, NamedTuple, Set
 import sys
+from typing import List
 
 from filehandler import FileHandler
-from agent import Agent, AgentHandler
-
-
-class Address(NamedTuple):
-    ip: str
-    port: int
+from containers import *
 
 
 class ListenerTCP(Thread):
@@ -33,7 +29,7 @@ class ListenerTCP(Thread):
             with conn:
                 parts = list()
                 while True:
-                    part = conn.recv(50)
+                    part = conn.recv(500)
                     if not part:
                         break
                     parts.append(part)
@@ -48,7 +44,6 @@ class ListenerUDP(Thread):
         try:
             self.s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             self.s.bind(address)
-            self.s.setblocking(0)
         except socket.error as e:
             print('Failed to create UDP socket', file=sys.stderr)
             print(e, file=sys.stderr)
@@ -58,29 +53,25 @@ class ListenerUDP(Thread):
 
     def run(self):
         while True:
-            conn, addr = self.s.accept()
-            with conn:
-                parts = list()
-                while True:
-                    part = conn.recv(11)
-                    if not part:
-                        break
-                    parts.append(part)
-                data = b"".join(parts)
-                self.f_udp_recv(data, addr[0])
+            data, addr = self.s.recvfrom(30)
+            self.f_udp_recv(data, addr[0])
 
 
 class Backend:
     PORT_TCP = 8888
     PORT_UDP = 9999
 
-    def __init__(self, username: bytes):
+    def __init__(self, username: str, debug: bool):
+        self.debug = debug
         self.listener_tcp = ListenerTCP(Address(self.get_ip(), self.PORT_TCP), self._f_tcp_recv)
         self.listener_tcp.start()
         self.listener_udp = ListenerUDP(Address('', self.PORT_UDP), self._f_tcp_recv)
+        self.listener_udp.start()
 
-        self.user_db = AgentHandler()
-        self.username = username
+        self.username = username.encode("ascii", "replace")[:10]
+        self.out_status_broadcast()
+
+        self.overviews_since_request: List[Jsonable] = list()
 
     @staticmethod
     def get_ip() -> str:
@@ -95,7 +86,7 @@ class Backend:
 
     @property
     def _padded_name(self) -> bytes:
-        return self.username.ljust(10, b"\0")[:10]
+        return self.username.ljust(10, b"\0")
 
     def _f_tcp_recv(self, data: bytes, ip: str):
         """
@@ -109,45 +100,61 @@ class Backend:
         [D] Download  filename
         [R] Rename    oldfilename\0newfilename
         [X] Delete    filename
-        [O] Overview  pickledDict
+        [O] Overview  json
         [P] Payload   bytestring
-        [F] Failure   failString\0pickledDict
+        [F] Failure   failString\0json
         """
         if len(data) < 11:
             print(f"header is not whole {data.decode()}", file=sys.stderr)
             return
 
         user = data[:10].rstrip(b"\0")
+        if user == self.username:
+            return
         agent = Agent(name=user, ip=ip)
-        agent_instead = self.user_db.none_if_proper(agent)
+        agent_instead = AgentHandler.none_if_proper(agent)
+        """
         if agent_instead is not None:
             # TODO handle error
             # call out_failure
             print(f"There is an agent like this: {agent_instead}", file=sys.stderr)
             return
-
-        command = data[10]
-        data = data[11:]
+        """
+        command = data[10:11]
+        payload = data[11:]
         if command == b'S':
             self._inc_status(agent)
             return
         else:
-            tokens = data.split(b"\0", maxsplit=1)
+            tokens = payload.split(b"\0", maxsplit=1)
             if command == b"U":
-                pass
-                
-    def _inc_status(self, agent: Agent):
+                if len(tokens) != 2:
+                    return
+                self._inc_upload(agent, *tokens)
+            elif command == b"F":
+                if len(tokens) != 2:
+                    return
+                self._inc_failure(agent, *tokens)
+            elif command == b"O":
+                if len(tokens) != 1:
+                    return
+                self._inc_overview(agent, tokens[0])
+            else:
+                print("Unknown command:", data)
+
+    def _inc_status(self, agent: Agent) -> bool:
         """
         Creates overview for the user, sends it.
         """
-        js = FileHandler.server_overview_of(agent.name)
-        if js is None:
+        d = FileHandler.server_overview_of(agent.name)
+        if d is None:
             return False
-        data = b"O" + js
+        data = b"O" + json.dumps(d).encode("ascii", "replace")
         return self._send_tcp(data, agent.ip)
 
     def out_status(self, agent: Agent) -> bool:
         # Sends STATUS command to agent.
+        self.overviews_since_request = list()
         return self._send_tcp(b"S", agent.ip)
     
     def out_status_broadcast(self) -> bool:
@@ -155,17 +162,55 @@ class Backend:
             s.bind(('', 0))
             s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
             try:
-                s.sendto(b"S", ("<broadcast>", self.PORT_UDP))
+                packet = self._padded_name + b"S"
+                s.sendto(packet, ("<broadcast>", self.PORT_UDP))
+                self.overviews_since_request = list()
                 return True
             except:
                 return False
 
     def _inc_upload(self, agent: Agent, filename: bytes, data: bytes) -> None:
-        print(f"Incoming UPLOAD\nfilename: {filename.decode()}\ndata head: {data[:30].decode()}")
-    
-    def out_upload(self, agent: Agent, filename: bytes, data: bytes) -> bool:
-        packet = self._padded_name + b"U" + filename + b"\0" + data
+        success = FileHandler.server_file_put(agent.name, filename, data)
+        if not success:
+            self.out_failure(agent, "PUT_ERROR", None)
+
+    def out_upload(self, agent: Agent, filepath: Path, filename: Optional[bytes] = None) -> bool:
+        data = FileHandler.client_file_read(filepath)
+        if data is None:
+            return False
+        if filename is None:
+            filename = filepath.name.encode("ascii", "replace")
+        packet = b"U" + filename + b"\0" + data
         return self._send_tcp(packet, agent.ip)
+
+    def _inc_overview(self, agent: Agent, bjson: bytes) -> None:
+        try:
+            overview = Jsonable(json.loads(bjson.decode("ascii", "replace")))
+            overview["from_user"] = agent.name
+            self.overviews_since_request.append(Jsonable(overview))
+        except:
+            self.out_failure(agent, b"PARSE_ERROR", None)
+
+    def out_overview(self, agent: Agent, overview: Jsonable) -> bool:
+        return self._send_tcp(b"O" + json.dumps(overview).encode("ascii", "replace"), agent.ip)
+
+    def get_overviews(self) -> List[Jsonable]:
+        return self.overviews_since_request
+
+    def _inc_failure(self, agent: Agent, fail_message: bytes, bjson: bytes) -> None:
+        try:
+            fail_obj = json.loads(bjson.decode("ascii", "replace"))
+        except:
+            return
+
+    def out_failure(self, agent: Agent, fail_message: bytes, fail_dict: Optional[Jsonable]) -> bool:
+        serialized = b""
+        if fail_dict is not None:
+            try:
+                serialized = json.dumps(fail_dict).encode("ascii", "replace")
+            except:
+                pass
+        return self._send_tcp(b"F"+fail_message+b"\0"+serialized, agent.ip)
 
     def _send_tcp(self, data: bytes, ip: str) -> bool:
         socket_timeout = 2
@@ -178,7 +223,8 @@ class Backend:
                 return False
             else:
                 try:
-                    s.sendall(self._padded_name + data)
+                    packet = self._padded_name + data
+                    s.sendall(packet)
                     return True
                 except Exception as e:
                     print(e, file=sys.stderr)

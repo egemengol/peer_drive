@@ -4,3 +4,4 @@
 .dmypy.json
 /venv/
 __pycache__/
+/.storage/*
