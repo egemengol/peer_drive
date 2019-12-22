@@ -2,6 +2,7 @@ from typing import NamedTuple, Optional, Set, Dict, Any, NewType
 import json
 from pprint import pformat
 
+import dataclasses
 
 Jsonable = NewType("Jsonable", Dict[str, Any])
 
@@ -53,3 +54,8 @@ class AgentHandler:
             if ag.name == name:
                 return ag
         return None
+
+
+class FailJsonEnc(json.JSONEncoder):
+    def default(self, o):
+        if dataclasses.is_dataclass(o):

@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 from containers import *
@@ -5,6 +6,8 @@ from containers import *
 path_storage: Path = Path("./.storage")
 if not path_storage.is_dir():
     path_storage.mkdir()
+
+# TODO BIG! handle file open exceptions! None handled right now!
 
 
 class FileHandler:
@@ -28,29 +31,37 @@ class FileHandler:
         # return None
 
     @staticmethod
-    def server_file_get(user: bytes, filename: bytes) -> Optional[bytes]:
-        return b"This is the contents of file " + filename + b" of user " + user + b"."
-        # return None
+    def server_file_get(user: str, filename: str) -> Optional[bytes]:
+        path: Path = path_storage / user
+        if not path.is_dir():
+            print(f"NOT FOUND file {filename} for user {user}", file=sys.stderr)
+            return None
+        filepath = path / filename
+        with filepath.open("rb") as f:
+            data = f.read()
+        print(f"SERVED file {filename} for user {user}, contents:")
+        print(f"{data[:40].decode('ascii', 'replace')}")
+        return data
 
     @staticmethod
-    def server_file_put(user: bytes, filename: bytes, data: bytes) -> bool:
-        path: Path = path_storage / user.decode("ascii", "replace")
+    def server_file_put(user: str, filename: str, data: bytes) -> bool:
+        path: Path = path_storage / user
         if not path.is_dir():
             path.mkdir()
-        filepath: Path = path / filename.decode("ascii", "replace")
-        with open(filepath, "wb") as f:
+        filepath: Path = path / filename
+        with filepath.open("wb") as f:
             f.write(data)
-        print(f"PUT file {filename.decode()} for user {user.decode()}, contents: {data[:30].decode()}")
+        print(f"PUT file {filename} for user {user}, contents: {data[:30].decode()}")
         return True
 
     @staticmethod
-    def server_file_delete(user: bytes, filename: bytes) -> bool:
-        print(f"DELETE file {filename.decode()} for user {user.decode()}")
+    def server_file_delete(user: str, filename: str) -> bool:
+        print(f"DELETE file {filename} for user {user}")
         return True
 
     @staticmethod
-    def server_file_rename(user: bytes, filename_old: bytes, filename_new: bytes) -> bool:
-        print(f"RENAME file {filename_old.decode()} into {filename_new.decode()} for user {user.decode()}")
+    def server_file_rename(user: str, filename_old: str, filename_new: str) -> bool:
+        print(f"RENAME file {filename_old} into {filename_new} for user {user}")
         return True
 
     @staticmethod
@@ -65,7 +76,7 @@ class FileHandler:
     @staticmethod
     def client_file_read(path: Path) -> Optional[bytes]:
         try:
-            with open(path, "rb") as f:
+            with path.open("rb") as f:
                 return f.read()
         except:
             return None

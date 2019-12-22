@@ -101,8 +101,8 @@ class Backend:
         [R] Rename    oldfilename\0newfilename
         [X] Delete    filename
         [O] Overview  json
-        [P] Payload   bytestring
-        [F] Failure   failString\0json
+        [P] Payload   filename\0bytestring
+        [F] Failure   bjson
         """
         if len(data) < 11:
             print(f"header is not whole {data.decode()}", file=sys.stderr)
@@ -132,13 +132,17 @@ class Backend:
                     return
                 self._inc_upload(agent, *tokens)
             elif command == b"F":
-                if len(tokens) != 2:
+                if len(tokens) != 1:
                     return
-                self._inc_failure(agent, *tokens)
+                self._inc_failure(agent, tokens[0])
             elif command == b"O":
                 if len(tokens) != 1:
                     return
                 self._inc_overview(agent, tokens[0])
+            elif command == b"D":
+                if len(tokens) != 1:
+                    return
+                self._inc_download(agent, tokens[0])
             else:
                 print("Unknown command:", data)
 
@@ -172,7 +176,7 @@ class Backend:
     def _inc_upload(self, agent: Agent, filename: bytes, data: bytes) -> None:
         success = FileHandler.server_file_put(agent.name, filename, data)
         if not success:
-            self.out_failure(agent, "PUT_ERROR", None)
+            self.out_failure(agent, b"PUT_ERROR", None)
 
     def out_upload(self, agent: Agent, filepath: Path, filename: Optional[bytes] = None) -> bool:
         data = FileHandler.client_file_read(filepath)
@@ -197,9 +201,11 @@ class Backend:
     def get_overviews(self) -> List[Jsonable]:
         return self.overviews_since_request
 
-    def _inc_failure(self, agent: Agent, fail_message: bytes, bjson: bytes) -> None:
+    def _inc_failure(self, agent: Agent, bjson: bytes) -> None:
         try:
             fail_obj = json.loads(bjson.decode("ascii", "replace"))
+            print(f"FAIL from {agent.name.decode('ascii', 'replace')}", file=sys.stderr)
+            print(fail_obj, file=sys.stderr)
         except:
             return
 
@@ -211,6 +217,20 @@ class Backend:
             except:
                 pass
         return self._send_tcp(b"F"+fail_message+b"\0"+serialized, agent.ip)
+
+    def _inc_download(self, agent: Agent, filename: bytes) -> None:
+        data = FileHandler.server_file_get(agent.name, filename)
+        if data is not None:
+            self.out_payload(agent, filename, data)
+
+    def out_download(self, agent: Agent, filename: bytes) -> bool:
+        return self._send_tcp(b"D" + filename, agent.ip)
+
+    def _inc_payload(self, agent: Agent, filename: bytes, payload: bytes) -> None:
+        pass
+
+    def out_payload(self, agent: Agent, filename: bytes, payload: bytes) -> bool:
+
 
     def _send_tcp(self, data: bytes, ip: str) -> bool:
         socket_timeout = 2
