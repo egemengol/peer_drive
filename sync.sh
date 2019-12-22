@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 
 # Remote IP
-ip_rpi=rpi.local
+ip_rem=Leni.local
+user_rem=egeme
 
 # Local path
 path_local=/home/egeme/code/egemenbekir/
 
 # RPi path
-path_remote=/home/pi/prog/egemenbekir
+path_remote=/home/$user_rem/prog/egemenbekir
 
-rsync -avzhP --exclude-from="./sync_exclude" -e ssh $path_local pi@$ip_rpi:$path_remote
+rsync -avzhP --exclude-from="./sync_exclude" -e ssh $path_local $user_rem@$ip_rem:$path_remote

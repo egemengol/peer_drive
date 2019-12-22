@@ -1,10 +1,10 @@
-from typing import NamedTuple, Optional, Set, Dict, Any, NewType
 import json
-from pprint import pformat
+from enum import Enum, auto
+from pathlib import Path
+from typing import NamedTuple, Optional, Set, List
 
-import dataclasses
-
-Jsonable = NewType("Jsonable", Dict[str, Any])
+import attr
+import cattr
 
 
 class Address(NamedTuple):
@@ -56,6 +56,74 @@ class AgentHandler:
         return None
 
 
-class FailJsonEnc(json.JSONEncoder):
-    def default(self, o):
-        if dataclasses.is_dataclass(o):
+@attr.s(auto_attribs=True)
+class BytesDataclass:
+    def to_bjson(self) -> bytes:
+        d = cattr.unstructure(self)
+        s = json.dumps(d)
+        return s.encode("ascii", "replace")
+
+    @classmethod
+    def from_bjson(cls, data: bytes):
+        s = data.decode("ascii", "replace")
+        d = json.loads(s)
+        try:
+            o = cattr.structure(d, cls)
+            return o
+        except:
+            return None
+
+
+@attr.s(auto_attribs=True)
+class Command(BytesDataclass):
+    agent: Agent
+    filename: Optional[str]
+    path: Optional[Path]
+
+
+class DownloadHandler:
+    _pendings: Set[Command] = set()
+    
+    @classmethod
+    def add_download(cls, command: Command) -> bool:
+        if command in cls._pendings:
+            return False
+        cls._pendings.add(command)
+        return True
+
+    @classmethod
+    def resolve_download(cls, agent: Agent, filename: str) -> Optional[Path]:
+        for comm in cls._pendings:
+            if comm.agent == agent and comm.filename == filename:
+                path = comm.path
+                cls._pendings.discard(comm)
+                return path
+        return None
+
+
+class ErrorType(Enum):
+    PARSE = auto()
+    PUT = auto()
+    OVERVIEW = auto()
+    GET = auto()
+    DOWNLOAD = auto()
+
+
+@attr.s(auto_attribs=True)
+class Fail(BytesDataclass):
+    error: ErrorType
+    filename: Optional[str]
+
+
+@attr.s(auto_attribs=True)
+class FileInfo(BytesDataclass):
+    name: str
+    length_KB: int
+
+
+@attr.s(auto_attribs=True)
+class Overview(BytesDataclass):
+    space_KB_total: int
+    space_KB_free: int
+    files: List[FileInfo]
+

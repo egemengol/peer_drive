@@ -1,3 +1,4 @@
+import json
 import sys
 from pathlib import Path
 
@@ -19,14 +20,14 @@ class FileHandler:
     # can use mypy backend.py for static type checking. These types are for this purpose.
 
     @staticmethod
-    def server_overview_of(user: bytes) -> Optional[Jsonable]:
+    def server_overview_of(user: bytes) -> Overview:
         # JSON encoding, so every key must be a string
         # noinspection PyTypeChecker
-        overview = Jsonable({
-            "user": user.decode('ascii', 'replace'),
-            "total_space_KB": 200000,
-            "used_space_KB": 50000,
-        })
+        overview = Overview(
+            space_KB_total=200_000,
+            space_KB_free=10_000,
+            files=[FileInfo("file1", 123), FileInfo("file2", 234)]
+        )
         return overview
         # return None
 

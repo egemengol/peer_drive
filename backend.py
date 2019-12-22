@@ -2,7 +2,6 @@ import socket
 from pathlib import Path
 from threading import Thread
 import sys
-from typing import List
 
 from filehandler import FileHandler
 from containers import *
@@ -71,7 +70,7 @@ class Backend:
         self.username = username.encode("ascii", "replace")[:10]
         self.out_status_broadcast()
 
-        self.overviews_since_request: List[Jsonable] = list()
+        self.overviews_since_request: List[Overview] = list()
 
     @staticmethod
     def get_ip() -> str:
@@ -103,6 +102,7 @@ class Backend:
         [O] Overview  json
         [P] Payload   filename\0bytestring
         [F] Failure   bjson
+        [ ] Success
         """
         if len(data) < 11:
             print(f"header is not whole {data.decode()}", file=sys.stderr)
@@ -146,15 +146,15 @@ class Backend:
             else:
                 print("Unknown command:", data)
 
-    def _inc_status(self, agent: Agent) -> bool:
+    def _inc_status(self, agent: Agent) -> None:
         """
         Creates overview for the user, sends it.
         """
-        d = FileHandler.server_overview_of(agent.name)
-        if d is None:
-            return False
-        data = b"O" + json.dumps(d).encode("ascii", "replace")
-        return self._send_tcp(data, agent.ip)
+        ov = FileHandler.server_overview_of(agent.name)
+        if ov is not None:
+            self._send_tcp(b"O" + ov.to_bjson(), agent.ip)
+        else:
+            self.out_failure(agent, Fail(ErrorType.OVERVIEW))
 
     def out_status(self, agent: Agent) -> bool:
         # Sends STATUS command to agent.
@@ -174,9 +174,10 @@ class Backend:
                 return False
 
     def _inc_upload(self, agent: Agent, filename: bytes, data: bytes) -> None:
-        success = FileHandler.server_file_put(agent.name, filename, data)
+        s_name = filename.decode("ascii", "replace")
+        success = FileHandler.server_file_put(agent.name.decode("ascii", "replace"), s_name, data)
         if not success:
-            self.out_failure(agent, b"PUT_ERROR", None)
+            self.out_failure(agent, Fail(ErrorType.PUT, around=None, filename=s_name))
 
     def out_upload(self, agent: Agent, filepath: Path, filename: Optional[bytes] = None) -> bool:
         data = FileHandler.client_file_read(filepath)
@@ -189,48 +190,56 @@ class Backend:
 
     def _inc_overview(self, agent: Agent, bjson: bytes) -> None:
         try:
-            overview = Jsonable(json.loads(bjson.decode("ascii", "replace")))
-            overview["from_user"] = agent.name
-            self.overviews_since_request.append(Jsonable(overview))
+            overview = Overview.from_bjson(bjson)
+            self.overviews_since_request.append(overview)
         except:
-            self.out_failure(agent, b"PARSE_ERROR", None)
+            self.out_failure(agent, Fail(error=ErrorType.PARSE, around=bjson, filename=None))
 
-    def out_overview(self, agent: Agent, overview: Jsonable) -> bool:
-        return self._send_tcp(b"O" + json.dumps(overview).encode("ascii", "replace"), agent.ip)
+    def out_overview(self, agent: Agent, overview: Overview) -> bool:
+        return self._send_tcp(b"O" + overview.to_bjson(), agent.ip)
 
-    def get_overviews(self) -> List[Jsonable]:
+    def get_overviews(self) -> List[Overview]:
         return self.overviews_since_request
 
     def _inc_failure(self, agent: Agent, bjson: bytes) -> None:
         try:
-            fail_obj = json.loads(bjson.decode("ascii", "replace"))
+            fail_obj = Fail.from_bjson(bjson)
             print(f"FAIL from {agent.name.decode('ascii', 'replace')}", file=sys.stderr)
             print(fail_obj, file=sys.stderr)
         except:
+            print(f"FAIL from {agent.name.decode('ascii', 'replace')}", file=sys.stderr)
+            print(f"Could not parse fail obj", file=sys.stderr)
+            print(bjson, file=sys.stderr)
+            self.out_failure(agent, Fail(error=ErrorType.PARSE, around=bjson, filename=None))
             return
 
-    def out_failure(self, agent: Agent, fail_message: bytes, fail_dict: Optional[Jsonable]) -> bool:
-        serialized = b""
-        if fail_dict is not None:
-            try:
-                serialized = json.dumps(fail_dict).encode("ascii", "replace")
-            except:
-                pass
-        return self._send_tcp(b"F"+fail_message+b"\0"+serialized, agent.ip)
+    def out_failure(self, agent: Agent, fail: Fail) -> bool:
+        return self._send_tcp(b"F"+fail.to_bjson(), agent.ip)
 
     def _inc_download(self, agent: Agent, filename: bytes) -> None:
-        data = FileHandler.server_file_get(agent.name, filename)
+        s_name = filename.decode("ascii", "replace")
+        data = FileHandler.server_file_get(agent.name.decode("ascii", "replace"), s_name)
         if data is not None:
             self.out_payload(agent, filename, data)
+        else:
+            self.out_failure(agent, Fail(ErrorType.GET, around=None, filename=s_name))
 
-    def out_download(self, agent: Agent, filename: bytes) -> bool:
-        return self._send_tcp(b"D" + filename, agent.ip)
+    def out_download(self, agent: Agent, filename: str, path: Path) -> bool:
+        DownloadHandler.add_download(Command(agent, filename, path))
+        return self._send_tcp(b"D" + filename.encode("ascii", "replace"), agent.ip)
 
     def _inc_payload(self, agent: Agent, filename: bytes, payload: bytes) -> None:
-        pass
+        s_name = filename.decode("ascii", "replace")
+        path = DownloadHandler.resolve_download(agent, s_name)
+        if path is None:
+            return
+        success = FileHandler.client_file_write(path, payload)
+        if not success:
+            self.out_failure(agent, Fail(ErrorType.DOWNLOAD, payload, s_name))
+            DownloadHandler.add_download(Command(agent, s_name, path))
 
     def out_payload(self, agent: Agent, filename: bytes, payload: bytes) -> bool:
-
+        return self._send_tcp(b"P"+filename+b"\0"+payload, agent.ip)
 
     def _send_tcp(self, data: bytes, ip: str) -> bool:
         socket_timeout = 2

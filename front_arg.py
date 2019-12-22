@@ -4,6 +4,7 @@ import click
 import time
 from pathlib import Path
 from tabulate import tabulate
+import attr
 
 from backend import Backend
 from filehandler import FileHandler
@@ -35,7 +36,8 @@ def wait_and_print_overviews(backend: Backend) -> None:
     print("Done. Your overviews:\n")
     overviews = backend.get_overviews()
     if len(overviews) > 0:
-        print(tabulate(overviews, headers="keys"))
+        ds = [ attr.asdict(o) for o in overviews ]
+        print(tabulate(ds, headers="keys"))
     else:
         print("No overviews had been received.")
     print()
