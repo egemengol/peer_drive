@@ -12,7 +12,6 @@ class Address(NamedTuple):
     port: int
 
 
-
 class Agent(NamedTuple):
     name: bytes
     ip: str
