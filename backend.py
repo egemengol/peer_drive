@@ -57,6 +57,7 @@ class ListenerUDP(Thread):
 
 
 class Backend:
+    # TODO same port
     PORT_TCP = 8888
     PORT_UDP = 9999
 
@@ -143,6 +144,10 @@ class Backend:
                 if len(tokens) != 1:
                     return
                 self._inc_download(agent, tokens[0])
+            elif command == b"P":
+                if len(tokens) != 2:
+                    return
+                self._inc_payload(agent, *tokens)
             else:
                 print("Unknown command:", data)
 
@@ -177,7 +182,7 @@ class Backend:
         s_name = filename.decode("ascii", "replace")
         success = FileHandler.server_file_put(agent.name.decode("ascii", "replace"), s_name, data)
         if not success:
-            self.out_failure(agent, Fail(ErrorType.PUT, around=None, filename=s_name))
+            self.out_failure(agent, Fail(ErrorType.PUT, filename=s_name))
 
     def out_upload(self, agent: Agent, filepath: Path, filename: Optional[bytes] = None) -> bool:
         data = FileHandler.client_file_read(filepath)
@@ -193,7 +198,7 @@ class Backend:
             overview = Overview.from_bjson(bjson)
             self.overviews_since_request.append(overview)
         except:
-            self.out_failure(agent, Fail(error=ErrorType.PARSE, around=bjson, filename=None))
+            self.out_failure(agent, Fail(error=ErrorType.PARSE, filename=None))
 
     def out_overview(self, agent: Agent, overview: Overview) -> bool:
         return self._send_tcp(b"O" + overview.to_bjson(), agent.ip)
@@ -210,7 +215,7 @@ class Backend:
             print(f"FAIL from {agent.name.decode('ascii', 'replace')}", file=sys.stderr)
             print(f"Could not parse fail obj", file=sys.stderr)
             print(bjson, file=sys.stderr)
-            self.out_failure(agent, Fail(error=ErrorType.PARSE, around=bjson, filename=None))
+            self.out_failure(agent, Fail(error=ErrorType.PARSE, filename=None))
             return
 
     def out_failure(self, agent: Agent, fail: Fail) -> bool:
@@ -222,7 +227,7 @@ class Backend:
         if data is not None:
             self.out_payload(agent, filename, data)
         else:
-            self.out_failure(agent, Fail(ErrorType.GET, around=None, filename=s_name))
+            self.out_failure(agent, Fail(ErrorType.GET, filename=s_name))
 
     def out_download(self, agent: Agent, filename: str, path: Path) -> bool:
         DownloadHandler.add_download(Command(agent, filename, path))
@@ -235,7 +240,7 @@ class Backend:
             return
         success = FileHandler.client_file_write(path, payload)
         if not success:
-            self.out_failure(agent, Fail(ErrorType.DOWNLOAD, payload, s_name))
+            self.out_failure(agent, Fail(ErrorType.DOWNLOAD, s_name))
             DownloadHandler.add_download(Command(agent, s_name, path))
 
     def out_payload(self, agent: Agent, filename: bytes, payload: bytes) -> bool:

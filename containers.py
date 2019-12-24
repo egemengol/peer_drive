@@ -12,6 +12,7 @@ class Address(NamedTuple):
     port: int
 
 
+
 class Agent(NamedTuple):
     name: bytes
     ip: str
@@ -74,12 +75,14 @@ class BytesDataclass:
             return None
 
 
-@attr.s(auto_attribs=True)
+@attr.s(auto_attribs=True, frozen=True)
 class Command(BytesDataclass):
     agent: Agent
     filename: Optional[str]
     path: Optional[Path]
 
+# TODO make this use dict, path as value.
+# Use it to check in front_end.
 
 class DownloadHandler:
     _pendings: Set[Command] = set()
@@ -92,6 +95,13 @@ class DownloadHandler:
         return True
 
     @classmethod
+    def _find_path(cls, agent: Agent, filename: str) -> Optional[Path]:
+        for comm in cls._pendings:
+            if comm.agent == agent and comm.filename == filename:
+                return comm.path
+        return None
+
+    @classmethod
     def resolve_download(cls, agent: Agent, filename: str) -> Optional[Path]:
         for comm in cls._pendings:
             if comm.agent == agent and comm.filename == filename:
@@ -99,6 +109,13 @@ class DownloadHandler:
                 cls._pendings.discard(comm)
                 return path
         return None
+
+    @classmethod
+    def is_pending(cls, agent: Agent, filename: str) -> bool:
+        for comm in cls._pendings:
+            if comm.agent == agent and comm.filename == filename:
+                return True
+        return False
 
 
 class ErrorType(Enum):

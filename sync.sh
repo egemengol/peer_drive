@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
 # Remote IP
-ip_rem=Leni.local
-user_rem=egeme
+ip_rem=rpi.local
+user_rem=pi
 
 # Local path
 path_local=/home/egeme/code/egemenbekir/

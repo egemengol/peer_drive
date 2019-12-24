@@ -9,6 +9,7 @@ if not path_storage.is_dir():
     path_storage.mkdir()
 
 # TODO BIG! handle file open exceptions! None handled right now!
+# TODO tests!
 
 
 class FileHandler:
@@ -84,5 +85,9 @@ class FileHandler:
 
     @staticmethod
     def client_file_write(path: Path, data: bytes) -> bool:
-        print(f"WROTE path {path} with data: ", data[:30])
-        return True
+        try:
+            with path.open("wb") as f:
+                f.write(data)
+                return True
+        except:
+            return False

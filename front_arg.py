@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 
 import click
 import time
@@ -36,7 +36,7 @@ def wait_and_print_overviews(backend: Backend) -> None:
     print("Done. Your overviews:\n")
     overviews = backend.get_overviews()
     if len(overviews) > 0:
-        ds = [ attr.asdict(o) for o in overviews ]
+        ds = [attr.asdict(o) for o in overviews]
         print(tabulate(ds, headers="keys"))
     else:
         print("No overviews had been received.")
@@ -64,6 +64,7 @@ def who_around(backend: Backend):
     backend.out_status_broadcast()
     wait_and_print_overviews(backend)
 
+
 @outwards.command()
 @click.argument("filepath", type=Path)
 @click.argument("to_who")
@@ -84,14 +85,23 @@ def upload(backend: Backend, filepath: Path, to_who: str):
 @outwards.command()
 @click.argument("filename")
 @click.argument("from_who")
-@click.argument("where", type=Path)
+@click.argument("to_where", type=Path)
 @click.pass_obj
-def download(backend: Backend, filename: str, from_who: str, where: Path):
+def download(backend: Backend, to_where: Path, from_who: str, filename: str):
     agent = AgentHandler.get_agent(from_who.encode("ascii", "replace"))
     if agent is None:
         print(f"No such agent with name '{from_who}' is found.")
-    else:
-        pass
+        return
+    sent = backend.out_download(agent, filename, to_where)
+    if not sent:
+        print(f"Couldn't send the download command.")
+        return
+    print(f"Downloading file {filename} from '{from_who}' into:\n{ to_where }...")
+    print(f"\nPlease wait until your download is ", end=" ")
+    time.sleep(1)
+    print("Done. Your file is: ")
+    with to_where.open("rb") as f:
+        print(f.read(40))
     print()
 
 
