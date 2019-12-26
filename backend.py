@@ -1,5 +1,4 @@
 import socket
-from pathlib import Path
 from threading import Thread
 import sys
 
@@ -230,7 +229,7 @@ class Backend:
             self.out_failure(agent, Fail(ErrorType.GET, filename=s_name))
 
     def out_download(self, agent: Agent, filename: str, path: Path) -> bool:
-        DownloadHandler.add_download(Command(agent, filename, path))
+        DownloadHandler.add_download(agent, filename, path)
         return self._send_tcp(b"D" + filename.encode("ascii", "replace"), agent.ip)
 
     def _inc_payload(self, agent: Agent, filename: bytes, payload: bytes) -> None:
@@ -241,7 +240,7 @@ class Backend:
         success = FileHandler.client_file_write(path, payload)
         if not success:
             self.out_failure(agent, Fail(ErrorType.DOWNLOAD, s_name))
-            DownloadHandler.add_download(Command(agent, s_name, path))
+            DownloadHandler.add_download(agent, s_name, path)
 
     def out_payload(self, agent: Agent, filename: bytes, payload: bytes) -> bool:
         return self._send_tcp(b"P"+filename+b"\0"+payload, agent.ip)
@@ -281,6 +280,8 @@ class Backend:
     def _inc_payload(self, addr: Address, data: bytes):
         pass
 
+    
+    THIS IS IMPORTANT! AgentHandler and DownloadHandler must be notified of related errors!
     def _inc_failure(self, addr: Address, fail_str: bytes, pickled: bytes):
         pass
 """

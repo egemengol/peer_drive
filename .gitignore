@@ -2,7 +2,7 @@
 .mypy_cache
 .idea
 .dmypy.json
-/venv/
+venv
 __pycache__/
 /.storage/*
 /conda_env/

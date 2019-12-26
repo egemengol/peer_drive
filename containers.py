@@ -1,7 +1,7 @@
 import json
 from enum import Enum, auto
 from pathlib import Path
-from typing import NamedTuple, Optional, Set, List
+from typing import NamedTuple, Optional, Set, List, Dict, Tuple
 
 import attr
 import cattr
@@ -74,47 +74,27 @@ class BytesDataclass:
             return None
 
 
-@attr.s(auto_attribs=True, frozen=True)
-class Command(BytesDataclass):
-    agent: Agent
-    filename: Optional[str]
-    path: Optional[Path]
-
-# TODO make this use dict, path as value.
-# Use it to check in front_end.
-
 class DownloadHandler:
-    _pendings: Set[Command] = set()
-    
+    _paths: Dict[Tuple[Agent, str], Path] = dict()
+
     @classmethod
-    def add_download(cls, command: Command) -> bool:
-        if command in cls._pendings:
+    def add_download(cls, agent: Agent, filename: str, path: Path) -> bool:
+        if (agent, filename) in cls._paths:
             return False
-        cls._pendings.add(command)
+        cls._paths[(agent, filename)] = path
         return True
 
     @classmethod
-    def _find_path(cls, agent: Agent, filename: str) -> Optional[Path]:
-        for comm in cls._pendings:
-            if comm.agent == agent and comm.filename == filename:
-                return comm.path
-        return None
+    def get_path(cls, agent: Agent, filename: str) -> Optional[Path]:
+        return cls._paths.get((agent, filename))
 
     @classmethod
     def resolve_download(cls, agent: Agent, filename: str) -> Optional[Path]:
-        for comm in cls._pendings:
-            if comm.agent == agent and comm.filename == filename:
-                path = comm.path
-                cls._pendings.discard(comm)
-                return path
-        return None
+        return cls._paths.pop((agent, filename), None)
 
     @classmethod
     def is_pending(cls, agent: Agent, filename: str) -> bool:
-        for comm in cls._pendings:
-            if comm.agent == agent and comm.filename == filename:
-                return True
-        return False
+        return (agent, filename) in cls._paths
 
 
 class ErrorType(Enum):
