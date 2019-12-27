@@ -9,6 +9,7 @@ The link to our [drafts/planning/discussing board](https://docs.google.com/docum
 1. [ ] Inwards
 1. [ ] DownloadHandler will use dict -- ( egemen )
 1. [ ] Report
+1. [ ] UDP and TCP will use the same port.
 
 50 MB per user, can be configured with inwards commands
 
