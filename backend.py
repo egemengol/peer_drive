@@ -147,6 +147,14 @@ class Backend:
                 if len(tokens) != 2:
                     return
                 self._inc_payload(agent, *tokens)
+            elif command == b"R":
+                if len(tokens) != 2:
+                    return
+                self._inc_rename(agent, *tokens)
+            elif command == b"X":
+                if len(tokens) != 1:
+                    return
+                self._inc_delete(agent, tokens[0])
             else:
                 print("Unknown command:", data)
 
@@ -154,7 +162,7 @@ class Backend:
         """
         Creates overview for the user, sends it.
         """
-        ov = FileHandler.server_overview_of(agent.name)
+        ov = FileHandler.server_overview_of(agent.name.decode("ascii", "replace"))
         if ov is not None:
             self._send_tcp(b"O" + ov.to_bjson(), agent.ip)
         else:
@@ -244,6 +252,25 @@ class Backend:
 
     def out_payload(self, agent: Agent, filename: bytes, payload: bytes) -> bool:
         return self._send_tcp(b"P"+filename+b"\0"+payload, agent.ip)
+
+    def _inc_rename(self, agent: Agent, old_filename: bytes, new_filename: bytes) -> bool:
+        old_name = old_filename.decode("ascii", "replace")
+        new_name = new_filename.decode("ascii", "replace")
+        success = FileHandler.server_file_rename(agent.name.decode("ascii", "replace"), old_name, new_name)
+        if not success:
+            self.out_failure(agent, Fail(error=ErrorType.GET, filename=old_name))
+
+    def out_rename(self, agent: Agent, old_filename: str, new_filename: str) -> bool:
+        return self._send_tcp(b"R" + old_filename.encode("ascii", "replace") + b"\0" + new_filename.encode("ascii", "replace"), agent.ip)
+
+    def _inc_delete(self, agent: Agent, filename: bytes):
+        s_name = filename.decode("ascii", "replace")
+        success = FileHandler.server_file_delete(agent.name.decode("ascii", "replace"), filename)
+        if not success:
+            self.out_failure(agent, Fail(error=ErrorType.GET, filename=s_name))  
+
+    def out_delete(self, agent: Agent, filename: str) -> bool:
+        return self._send_tcp(b"X" + filename.encode("ascii", "replace"), agent.ip)
 
     def _send_tcp(self, data: bytes, ip: str) -> bool:
         socket_timeout = 2

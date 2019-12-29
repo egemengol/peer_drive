@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 
 import click
 import time
@@ -26,7 +26,7 @@ def inwards():
 @click.option("--user")
 def overview(user: str):
     if user is not None:
-        print(FileHandler.server_overview_of(user.encode("ascii", "replace")))
+        print(FileHandler.server_overview_of(user))
     else:
         print(FileHandler.server_storage_status())
 
@@ -42,7 +42,6 @@ def wait_and_print_overviews(backend: Backend) -> None:
     else:
         print("No overviews had been received.")
     print()
-
 
 @main.group(invoke_without_command=True)
 @click.option("--username", prompt=True)
@@ -105,6 +104,36 @@ def download(backend: Backend, to_where: Path, from_who: str, filename: str):
         print(f.read(40))
     print()
 
+@outwards.command()
+@click.argument("old_filename")
+@click.argument("new_filename")
+@click.argument("from_who")
+@click.pass_obj
+def rename(backend: Backend, old_filename: str, new_filename: str, from_who: str):
+    agent = AgentHandler.get_agent(from_who.encode("ascii", "replace"))
+    if agent is None:
+        print(f"No such agent with name '{from_who}' is found.")
+        return
+    sent = backend.out_rename(agent, old_filename, new_filename)
+    if not sent:
+        print(f"Couldn't send the rename command.")
+        return
+    print(f"Rename file {old_filename} to {new_filename}")
+
+@outwards.command()
+@click.argument("filename")
+@click.argument("from_who")
+@click.pass_obj
+def delete(backend: Backend, filename: str, from_who: str):
+    agent = AgentHandler.get_agent(from_who.encode("ascii", "replace"))
+    if agent is None:
+        print(f"No such agent with name '{from_who}' is found.")
+        return 
+    sent = backend.out_delete(agent, filename)
+    if not sent:
+        print(f"Couldn't send the delete command.")
+        return
+    print(f"File {filename} is deleted.")
 
 if __name__ == "__main__":
     main()

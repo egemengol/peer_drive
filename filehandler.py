@@ -1,10 +1,13 @@
 import json
 import sys
+import os
+import os.path
 from pathlib import Path
 
 from containers import *
 
-path_storage: Path = Path("./.storage")
+# TODO Are you sure ./.storage?
+path_storage: Path = Path("./storage")
 if not path_storage.is_dir():
     path_storage.mkdir()
 
@@ -21,13 +24,41 @@ class FileHandler:
     # can use mypy backend.py for static type checking. These types are for this purpose.
 
     @staticmethod
-    def server_overview_of(user: bytes) -> Overview:
+    def get_size(path: Path) -> bytes:
+        total_size = 0
+        seen = {}
+        for dirpath, dirnames, filenames in os.walk(path):
+            for f in filenames:
+                fp = os.path.join(dirpath, f)
+                try:
+                    stat = os.stat(fp)
+                except OSError:
+                    continue
+                try:
+                    seen[stat.st_ino]
+                except KeyError:
+                    seen[stat.st_ino] = True
+                else:
+                    continue
+                total_size += stat.st_size
+        return total_size
+
+    @staticmethod
+    def server_overview_of(user: str) -> Overview:
         # JSON encoding, so every key must be a string
         # noinspection PyTypeChecker
+        space_total = 200000
+        space_free = space_total-FileHandler.get_size(path_storage) 
+        all_files_user = []
+        path: Path = path_storage / user
+        for (dirpath, dirnames, filenames) in os.walk(path):
+            for f in filenames:
+                all_files_user.append(FileInfo(f, os.path.getsize(path + '/' + filenames)))
+
         overview = Overview(
-            space_KB_total=200_000,
-            space_KB_free=10_000,
-            files=[FileInfo("file1", 123), FileInfo("file2", 234)]
+            space_KB_total=space_total,
+            space_KB_free=space_free,
+            files=all_files_user
         )
         return overview
         # return None
@@ -58,20 +89,41 @@ class FileHandler:
 
     @staticmethod
     def server_file_delete(user: str, filename: str) -> bool:
-        print(f"DELETE file {filename} for user {user}")
-        return True
+        filepath: Path= path_storage / user / filename
+        if os.path.isfile(filepath):
+            os.remove(filepath)
+            print(f"DELETE file {filename} for user {user}")
+            return True
+        else:
+            return False
 
     @staticmethod
     def server_file_rename(user: str, filename_old: str, filename_new: str) -> bool:
-        print(f"RENAME file {filename_old} into {filename_new} for user {user}")
-        return True
+        filepath1: Path = path_storage / user / filename_old
+        filepath2: Path = path_storage / user / filename_old
+        if os.path.isfile(filepath1):
+            os.rename(r'{}'.format(filepath1),r'{}'.format(filepath2))
+            print(f"RENAME file {filename_old} into {filename_new} for user {user}")
+            return True
+        else:
+            return False
 
     @staticmethod
     def server_storage_status() -> str:
         # TODO no idea about the output. Your choice.
         # JSON for now.
+        space_total = FileHandler.get_size(path_storage)
+        list_of_dirnames = []
+        list_of_filenames = [] 
+        for (dirpath, dirnames, filenames) in os.walk(path_storage):
+            list_of_dirnames.append(dirpath.replace(path_storage,''))
+            for f in filenames:
+                list_of_filenames.append(f)
+                
         status = {
-            "total": "laksjd"
+            "total size": str(space_total),
+            "directories" : str(list_of_dirnames),
+            "# of file" : str(len(list_of_filenames))
         }
         return json.dumps(status)
 

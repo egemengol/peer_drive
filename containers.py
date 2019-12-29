@@ -110,16 +110,13 @@ class Fail(BytesDataclass):
     error: ErrorType
     filename: Optional[str]
 
-
 @attr.s(auto_attribs=True)
 class FileInfo(BytesDataclass):
     name: str
     length_KB: int
-
 
 @attr.s(auto_attribs=True)
 class Overview(BytesDataclass):
     space_KB_total: int
     space_KB_free: int
     files: List[FileInfo]
-
