@@ -6,7 +6,6 @@ from pathlib import Path
 
 from containers import *
 
-# TODO Are you sure ./.storage?
 path_storage: Path = Path("./storage")
 if not path_storage.is_dir():
     path_storage.mkdir()
@@ -18,13 +17,12 @@ if not path_storage.is_dir():
 class FileHandler:
     # These are not instance methods, will use like FileHandler.file_get(b"bekir", b"odev.txt")
     # No "__init__"
-    # class variables defined like:
-    master_path = Path("~/.peerdrive")
 
     # can use mypy backend.py for static type checking. These types are for this purpose.
 
     @staticmethod
-    def get_size(path: Path) -> bytes:
+    def get_size(path: Path) -> int:
+        """
         total_size = 0
         seen = {}
         for dirpath, dirnames, filenames in os.walk(path):
@@ -42,6 +40,8 @@ class FileHandler:
                     continue
                 total_size += stat.st_size
         return total_size
+        """
+        return sum(f.stat().st_size for f in path.glob('**/*') if f.is_file() )
 
     @staticmethod
     def server_overview_of(user: str) -> Overview:
@@ -53,8 +53,8 @@ class FileHandler:
         path: Path = path_storage / user
         for (dirpath, dirnames, filenames) in os.walk(path):
             for f in filenames:
-                all_files_user.append(FileInfo(f, os.path.getsize(path + '/' + filenames)))
-
+                all_files_user.append(FileInfo(f, os.path.getsize(path / f)))
+        
         overview = Overview(
             space_KB_total=space_total,
             space_KB_free=space_free,
