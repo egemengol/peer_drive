@@ -110,22 +110,33 @@ class FileHandler:
 
     @staticmethod
     def server_storage_status() -> str:
-        # TODO no idea about the output. Your choice.
-        # JSON for now.
+        users: List[Tuple[str, int]] = list()
+
+        for user in path_storage.iterdir():
+            if not user.is_dir():
+                continue
+            size = user.stat().st_size
+            users.append((user.name, size))
+        return "(User, used space):\n" + str(users)
+        """
         space_total = FileHandler.get_size(path_storage)
         list_of_dirnames = []
-        list_of_filenames = [] 
+        list_of_filenames = []
         for (dirpath, dirnames, filenames) in os.walk(path_storage):
-            list_of_dirnames.append(dirpath.replace(path_storage,''))
+
+            list_of_dirnames.append(Path(dirpath).name)
             for f in filenames:
                 list_of_filenames.append(f)
-                
         status = {
             "total size": str(space_total),
             "directories" : str(list_of_dirnames),
             "# of file" : str(len(list_of_filenames))
         }
-        return json.dumps(status)
+        status = {
+
+        }
+        return str(status)
+        """
 
     @staticmethod
     def client_file_read(path: Path) -> Optional[bytes]:

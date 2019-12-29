@@ -7,5 +7,5 @@ __pycache__/
 /.storage/*
 /conda_env/
 env
-storage
-.storage
+/storage/*
+/storage/
