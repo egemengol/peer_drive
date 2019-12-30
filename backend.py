@@ -68,6 +68,7 @@ class Backend:
         self.listener_udp.start()
 
         self.username = username.encode("ascii", "replace")[:10]
+        self.username_str = username
         self.out_status_broadcast()
 
         self.overviews_since_request: List[Overview] = list()
@@ -162,7 +163,7 @@ class Backend:
         """
         Creates overview for the user, sends it.
         """
-        ov = FileHandler.server_overview_of(agent.name.decode("ascii", "replace"), self.username)
+        ov = FileHandler.server_overview_of(agent.name.decode("ascii", "replace"), self.username_str)
         if ov is not None:
             self._send_tcp(b"O" + ov.to_bjson(), agent.ip)
         else:

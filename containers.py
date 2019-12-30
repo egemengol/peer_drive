@@ -119,7 +119,7 @@ class FileInfo(BytesDataclass):
 
 @attr.s(auto_attribs=True)
 class Overview(BytesDataclass):
-    username:str
+    username: str
     space_Byte_total: int
     space_Byte_free: int
     files: List[FileInfo]
