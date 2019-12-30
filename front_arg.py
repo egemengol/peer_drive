@@ -5,11 +5,14 @@ import time
 from pathlib import Path
 from tabulate import tabulate
 import attr
+import pickle
+import os
 
 from backend import Backend
 from filehandler import FileHandler
 from containers import *
 
+size = None
 
 @click.group()
 def main():
@@ -135,5 +138,30 @@ def delete(backend: Backend, filename: str, from_who: str):
         return
     print(f"File {filename} is deleted.")
 
+def __pickling__(__list__):
+    with open("store.txt", "wb") as fp:   # Pickling
+        pickle.dump(__list__, fp)
+
+def __unpickling__():
+    if os.path.isfile("store.txt") :
+        if os.path.getsize("store.txt") > 0 :
+            with open("store.txt", "rb") as fp :   # Unpickling
+                b = pickle.load(fp)
+            return b
+    else :
+        dict = {}
+        f=open("store.txt", "w+")
+        return dict
+
 if __name__ == "__main__":
+    dict = __unpickling__()
+    if  dict == {}:
+        size = input("Select size for storage: ")
+        while not size or int(size) < 100000 :
+            os.system('clear')
+            size = input("Please select valid size for storage or greater than 100000: ")
+        dict = {"size": int(size)}
+        __pickling__(dict)
+    else:
+        size =  dict["size"]
     main()

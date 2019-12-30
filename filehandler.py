@@ -3,8 +3,12 @@ import sys
 import os
 import os.path
 from pathlib import Path
+import stat
+import pickle
 
 from containers import *
+
+# import front_arg
 
 path_storage: Path = Path("./storage")
 if not path_storage.is_dir():
@@ -21,7 +25,19 @@ class FileHandler:
     # can use mypy backend.py for static type checking. These types are for this purpose.
 
     @staticmethod
-    def get_size(path: Path) -> int:
+    def __unpickling__():
+        if os.path.isfile("store.txt") :
+            if os.path.getsize("store.txt") > 0 :
+                with open("store.txt", "rb") as fp :   # Unpickling
+                    b = pickle.load(fp)
+                return b
+        else :
+            dict = {}
+            f=open("store.txt", "w+")
+            return dict
+
+    @staticmethod
+    def get_size(path: Path=path_storage) -> int:
         """
         total_size = 0
         seen = {}
@@ -44,10 +60,10 @@ class FileHandler:
         return sum(f.stat().st_size for f in path.glob('**/*') if f.is_file() )
 
     @staticmethod
-    def server_overview_of(user: str) -> Overview:
+    def server_overview_of(user: str)-> Overview:
         # JSON encoding, so every key must be a string
         # noinspection PyTypeChecker
-        space_total = 200000
+        space_total = FileHandler.__unpickling__()["size"]
         space_free = space_total-FileHandler.get_size(path_storage) 
         all_files_user = []
         path: Path = path_storage / user
@@ -56,8 +72,8 @@ class FileHandler:
                 all_files_user.append(FileInfo(f, os.path.getsize(path / f)))
         
         overview = Overview(
-            space_KB_total=space_total,
-            space_KB_free=space_free,
+            space_Byte_total=space_total,
+            space_Byte_free=space_free,
             files=all_files_user
         )
         return overview
@@ -78,6 +94,8 @@ class FileHandler:
 
     @staticmethod
     def server_file_put(user: str, filename: str, data: bytes) -> bool:
+        if FileHandler.__unpickling__()["size"] - FileHandler.get_size(path_storage) < sys.getsizeof(data):
+            return False
         path: Path = path_storage / user
         if not path.is_dir():
             path.mkdir()
@@ -89,8 +107,13 @@ class FileHandler:
 
     @staticmethod
     def server_file_delete(user: str, filename: str) -> bool:
-        filepath: Path= path_storage / user / filename
-        if os.path.isfile(filepath):
+        filepath= path_storage.stem + "/" + user + "/" + filename.decode('utf-8')
+        try:
+            os.remove(filepath)
+            print(f"DELETE file {filename} for user {user}")
+        except PermissionError:
+            print('PermissionError do change')
+            os.chmod(filepath, stat.S_IWRITE)
             os.remove(filepath)
             print(f"DELETE file {filename} for user {user}")
             return True
@@ -99,8 +122,8 @@ class FileHandler:
 
     @staticmethod
     def server_file_rename(user: str, filename_old: str, filename_new: str) -> bool:
-        filepath1: Path = path_storage / user / filename_old
-        filepath2: Path = path_storage / user / filename_old
+        filepath1= path_storage.stem + "/" + user + "/" + filename_old
+        filepath2= path_storage.stem + "/" + user + "/" + filename_new
         if os.path.isfile(filepath1):
             os.rename(r'{}'.format(filepath1),r'{}'.format(filepath2))
             print(f"RENAME file {filename_old} into {filename_new} for user {user}")
