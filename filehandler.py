@@ -60,7 +60,7 @@ class FileHandler:
         return sum(f.stat().st_size for f in path.glob('**/*') if f.is_file() )
 
     @staticmethod
-    def server_overview_of(user: str)-> Overview:
+    def server_overview_of(user: str, myname: str = None)-> Overview:
         # JSON encoding, so every key must be a string
         # noinspection PyTypeChecker
         space_total = FileHandler.__unpickling__()["size"]
@@ -72,6 +72,7 @@ class FileHandler:
                 all_files_user.append(FileInfo(f, os.path.getsize(path / f)))
         
         overview = Overview(
+            username=myname,
             space_Byte_total=space_total,
             space_Byte_free=space_free,
             files=all_files_user

@@ -162,7 +162,7 @@ class Backend:
         """
         Creates overview for the user, sends it.
         """
-        ov = FileHandler.server_overview_of(agent.name.decode("ascii", "replace"))
+        ov = FileHandler.server_overview_of(agent.name.decode("ascii", "replace"), self.username)
         if ov is not None:
             self._send_tcp(b"O" + ov.to_bjson(), agent.ip)
         else:
